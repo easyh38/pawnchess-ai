@@ -1,0 +1,40 @@
+# Python 캐시 (.pyc 안에 내 PC의 절대 경로/사용자명이 들어 있음)
+__pycache__/
+*.py[cod]
+
+# 가상환경
+.venv/
+venv/
+env/
+
+# 환경변수 / 비밀값 (혹시 나중에 API 키 등을 쓰게 될 경우 대비)
+.env
+.env.*
+*.pem
+*.key
+
+# 테스트 / 도구 캐시
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# 빌드 산출물
+build/
+dist/
+*.egg-info/
+
+# 실험 결과물 (나중에 CSV/그래프로 저장하게 되면 올리지 않기)
+results/
+*.csv
+
+# 에디터 / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Claude Code 개인 설정
+.claude/
