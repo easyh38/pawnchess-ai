@@ -18,13 +18,13 @@ python -m pawnchess.cli --play random            # 시작부터 RandomAgent와 �
 python -m pawnchess.cli --play minimax           # 내가 만든 에이전트와 대국 (먼저 등록 필요: 3장 참고)
 ```
 
-CLI 옵션:
-`--n`(기본 4) : 판 크기 선택
-`--rule {pawn,cross}`(기본 pawn = 메인 규칙, cross = 비교용 변형) : 폰의 이동 방식
-`--no-move {lose,draw}`(기본 lose = 둘 수 없는 쪽이 패배, draw = 무승부) : 자기 차례에서 둘 수 있는 수가 없을 때의 처리 방식
-`--max-plies <정수|auto|none>`(정수 = 그 수만큼 두면 무승부, auto = 규칙별 기본값(cross : 50, pawn : 제한 없음), none = 제한 없음) : 최대 진행수 제한
-`--repetition-draw <정수|none>`(정수 = 그 수만큼 반복되면 무승부, none = 반복 무승부 판정을 끔) : 같은 국면 반복 시 무승부 처리
-`--play <에이전트 이름>`(기본은 `random`뿐, 내 에이전트 추가 방법은 3장) : 시작부터 그 에이전트와 대국. 이름은 `pawnchess/agents.py`의 `AGENTS` 등록표에 있는 것만 가능
+### 시작 옵션
+- `--n`(기본 4) : 판 크기 선택
+- `--rule {pawn,cross}`(기본 pawn = 메인 규칙, cross = 비교용 변형) : 폰의 이동 방식
+- `--no-move {lose,draw}`(기본 lose = 둘 수 없는 쪽이 패배, draw = 무승부) : 자기 차례에서 둘 수 있는 수가 없을 때의 처리 방식
+- `--max-plies <정수|auto|none>`(정수 = 그 수만큼 두면 무승부, auto = 규칙별 기본값(cross : 50, pawn : 제한 없음), none = 제한 없음) : 최대 진행수 제한
+- `--repetition-draw <정수|none>`(정수 = 그 수만큼 반복되면 무승부, none = 반복 무승부 판정을 끔) : 같은 국면 반복 시 무승부 처리
+- `--play <에이전트 이름>`(기본은 `random`뿐, 내 에이전트 추가 방법은 3장) : 시작부터 그 에이전트와 대국. 이름은 `pawnchess/agents.py`의 `AGENTS` 등록표에 있는 것만 가능
 
 화면 예시: 
 (N=4): 백 `W`, 흑 `B`, 빈칸 `.`. 위쪽이 N행이고 마지막 수는 `[ ]`로 표시됩니다.
