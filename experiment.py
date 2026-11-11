@@ -15,23 +15,23 @@ import time
 
 from pawnchess import Config, CountingGame, Game, RandomAgent, run_matches
 # from pawnchess.agents import AGENTS        # CLI 등록표를 그대로 쓰고 싶을 때
-# from pawnchess.agents import MinimaxAgent  # 직접 import해서 쓸 때
+from pawnchess.agents import BfsAgent, MinimaxAgent, AlphaBetaEvalAgent, AlphaBetaAgent, AlphaBetaAdvancedAgent
 
 # ============================== 설정 (여기를 수정) ==============================
 
 # 에이전트: "인자 없이 호출하면 Agent 객체를 만드는 함수"로 적는다.
 # (매 설정마다 새 객체를 만들어 상태가 섞이지 않게 하기 위함)
-AGENT_A = lambda: RandomAgent(0)       # 평가할 에이전트 예) lambda: MinimaxAgent()  /  AGENTS["minimax"]
-AGENT_B = lambda: RandomAgent(1)       # 상대 에이전트     예) lambda: RandomAgent(1)
+AGENT_A = lambda: AlphaBetaEvalAgent()       # 평가할 에이전트 예) lambda: MinimaxAgent()  /  AGENTS["minimax"]
+AGENT_B = lambda: AlphaBetaAdvancedAgent()     # 상대 에이전트     예) lambda: RandomAgent(1)
 
 # 실험할 환경 목록. 여러 개 적으면 차례로 모두 돌린다. (확장 축 ① N↑, ② 규칙 변경)
 CONFIGS = [
-    Config(n=4, rule="pawn"),
+    Config(n=6, rule="pawn"),
     # Config(n=5, rule="pawn"),
     # Config(n=4, rule="cross"),   # cross는 max_plies 기본 50
 ]
 
-N_GAMES = 100        # 설정마다 둘 판 수 (색깔은 교대로 잡는다)
+N_GAMES = 100       #W 설정마다 둘 판 수 (색깔은 교대로 잡는다)
 
 # ===============================================================================
 
