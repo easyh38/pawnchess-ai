@@ -11,6 +11,19 @@ from .notation import (direction_to_action, format_move, is_move_text,
 
 #기본 세팅===============================================================================================
 
+def _shuffled_actions(game: Game, state: State, rng: random.Random) -> list[Action]:
+    """루트의 합법 수를 섞어서 돌려준다.
+
+    최선 수 선택은 `score > best_score`(엄격 비교)이므로, 점수가 같은 최선 수가 여럿이면
+    섞인 순서에서 먼저 나온 것이 뽑힌다 → 동점 수 중 무작위 선택.
+    엄격 비교를 유지하므로 알파베타 가지치기의 정확성도 그대로다.
+    (seed를 주면 같은 seed끼리는 항상 같은 대국이 나온다)
+    """
+    acts = game.actions(state)
+    rng.shuffle(acts)
+    return acts
+
+
 class Agent:
     def choose_action(self, game: Game, state: State) -> Action:
         raise NotImplementedError
@@ -67,11 +80,12 @@ class MinimaxAgent(Agent):
     값은 루트에서 둘 차례인 쪽(me) 관점의 효용(+1 승 / 0 무 / -1 패)이다.
     """
 
-    def __init__(self, name: str = "MinimaxAI") -> None:
+    def __init__(self, name: str = "MinimaxAI", seed: Optional[int] = None) -> None:
         self.name = name
+        self.rng = random.Random(seed)   # 동점인 최선 수 중 무작위 선택용
 
     def choose_action(self, game: Game, state: State) -> Action:
-        acts = game.actions(state)
+        acts = _shuffled_actions(game, state, self.rng)
         if not acts:
             raise ValueError("가능한 행동이 없습니다.")
         me = game.to_move(state)
@@ -101,11 +115,12 @@ class AlphaBetaAgent(Agent):
     - alpha >= beta가 되면 그 아래 수는 더 볼 필요가 없다 (가지치기)
     """
 
-    def __init__(self, name: str = "AlphaBetaAI") -> None:
+    def __init__(self, name: str = "AlphaBetaAI", seed: Optional[int] = None) -> None:
         self.name = name
+        self.rng = random.Random(seed)   # 동점인 최선 수 중 무작위 선택용
 
     def choose_action(self, game: Game, state: State) -> Action:
-        acts = game.actions(state)
+        acts = _shuffled_actions(game, state, self.rng)
         if not acts:
             raise ValueError("가능한 행동이 없습니다.")
         me = game.to_move(state)
@@ -180,14 +195,16 @@ class AlphaBetaEvalAgent(Agent):
     depth 수까지만 내다보고, 그 깊이에서 끝나지 않은 국면은 evaluate()로 점수를 매긴다.
     """
 
-    def __init__(self, depth: int = 4, name: str = "AlphaBetaEvalAI") -> None:
+    def __init__(self, depth: int = 4, name: str = "AlphaBetaEvalAI",
+                 seed: Optional[int] = None) -> None:
         if depth < 1:
             raise ValueError("depth는 1 이상이어야 합니다")
         self.depth = depth
         self.name = name
+        self.rng = random.Random(seed)   # 동점인 최선 수 중 무작위 선택용
 
     def choose_action(self, game: Game, state: State) -> Action:
-        acts = game.actions(state)
+        acts = _shuffled_actions(game, state, self.rng)
         if not acts:
             raise ValueError("가능한 행동이 없습니다.")
         me = game.to_move(state)
@@ -294,8 +311,9 @@ def evaluate_advanced(game: Game, state: State, player: int) -> float:
 class AlphaBetaAdvancedAgent(AlphaBetaEvalAgent):
     """AlphaBetaEvalAgent와 탐색은 똑같고, 평가 함수만 evaluate_advanced()로 바꾼 것."""
 
-    def __init__(self, depth: int = 4, name: str = "AlphaBetaAdvancedAI") -> None:
-        super().__init__(depth=depth, name=name)
+    def __init__(self, depth: int = 4, name: str = "AlphaBetaAdvancedAI",
+                 seed: Optional[int] = None) -> None:
+        super().__init__(depth=depth, name=name, seed=seed)
 
     def evaluate(self, game: Game, state: State, me: int) -> float:
         return evaluate_advanced(game, state, me)
