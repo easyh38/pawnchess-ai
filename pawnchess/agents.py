@@ -158,18 +158,48 @@ class AlphaBetaAgent(Agent):
             return value
 
 
-def evaluate(game: Game, state: State, player: int) -> float:
+# 평가 함수 가중치 (파라미터 조정 실험용) =====================================
+# 에이전트를 만들 때 weights=로 일부만 바꿔 넣을 수 있다. 빠진 키는 아래 기본값을 쓴다.
+#   예) AlphaBetaEvalAgent(depth=4, weights={"material": 0.6, "advance": 0.3})
+# 가중치 절댓값의 합은 1 이하여야 한다 → 평가값이 항상 실제 승패(±1)보다 작다.
+EVAL_WEIGHTS: dict[str, float] = {"material": 0.45, "advance": 0.45}
+ADV_EVAL_WEIGHTS: dict[str, float] = {
+    "material": 0.30, "advance": 0.20, "frontier": 0.25, "passed": 0.15, "mobility": 0.10,
+}
+
+
+def _merge_weights(defaults: dict[str, float],
+                   weights: Optional[dict[str, float]]) -> dict[str, float]:
+    """기본 가중치에 사용자가 준 값을 덮어쓴다. 모르는 키나 합 > 1이면 오류."""
+    merged = dict(defaults)
+    if weights:
+        unknown = set(weights) - set(defaults)
+        if unknown:
+            raise ValueError(f"알 수 없는 가중치 이름: {sorted(unknown)} "
+                             f"(가능: {sorted(defaults)})")
+        merged.update(weights)
+    total = sum(abs(w) for w in merged.values())
+    if total > 1 + 1e-9:
+        raise ValueError(f"가중치 절댓값의 합이 1을 넘습니다 ({total:.3f}). "
+                         "평가값이 실제 승패(±1)보다 커질 수 있습니다.")
+    return merged
+
+
+def evaluate(game: Game, state: State, player: int,
+             weights: Optional[dict[str, float]] = None) -> float:
     """종료되지 않은 국면의 평가 함수 (player 관점).
 
-    E = 0.45 * (내 폰 수 - 상대 폰 수) / N
-      + 0.45 * (내 전진도 합 - 상대 전진도 합) / (N * (N - 1))
+    E = w_material * (내 폰 수 - 상대 폰 수) / N
+      + w_advance  * (내 전진도 합 - 상대 전진도 합) / (N * (N - 1))
+    (기본값 w_material = w_advance = 0.45, EVAL_WEIGHTS 참고)
 
     - 폰 개수: 폰이 많이 남을수록 유리
     - 전진도: 폰이 상대편 끝 줄(목표 줄)에 가까울수록 유리
               (백은 row가 클수록, 흑은 row가 작을수록 전진)
-    - 두 항 모두 -1 ~ 1 사이로 정규화하고 0.45를 곱해, |E| < 0.9 가 되게 했다.
+    - 두 항 모두 -1 ~ 1 사이로 정규화하고 가중치 합을 1 이하로 두어 |E| < 1 이 되게 했다.
       → 실제 승패(utility ±1)가 항상 평가값보다 우선한다.
     """
+    w = EVAL_WEIGHTS if weights is None else weights
     n = game.config.n
     my_count = opp_count = 0
     my_adv = opp_adv = 0
@@ -186,7 +216,7 @@ def evaluate(game: Game, state: State, player: int) -> float:
                 opp_adv += progress
     material = (my_count - opp_count) / n
     advance = (my_adv - opp_adv) / (n * (n - 1))
-    return 0.45 * material + 0.45 * advance
+    return w["material"] * material + w["advance"] * advance
 
 
 class AlphaBetaEvalAgent(Agent):
@@ -195,11 +225,15 @@ class AlphaBetaEvalAgent(Agent):
     depth 수까지만 내다보고, 그 깊이에서 끝나지 않은 국면은 evaluate()로 점수를 매긴다.
     """
 
+    default_weights = EVAL_WEIGHTS   # 하위 클래스가 자기 평가 함수의 기본 가중치로 바꾼다
+
     def __init__(self, depth: int = 4, name: str = "AlphaBetaEvalAI",
-                 seed: Optional[int] = None) -> None:
+                 seed: Optional[int] = None,
+                 weights: Optional[dict[str, float]] = None) -> None:
         if depth < 1:
             raise ValueError("depth는 1 이상이어야 합니다")
         self.depth = depth
+        self.weights = _merge_weights(self.default_weights, weights)
         self.name = name
         self.rng = random.Random(seed)   # 동점인 최선 수 중 무작위 선택용
 
@@ -221,7 +255,7 @@ class AlphaBetaEvalAgent(Agent):
 
     def evaluate(self, game: Game, state: State, me: int) -> float:
         """깊이 0에서 쓰는 평가 함수. 하위 클래스에서 바꿔 끼울 수 있다."""
-        return evaluate(game, state, me)
+        return evaluate(game, state, me, self.weights)
 
     def alphabeta(self, game: Game, state: State, depth: int, me: int,
                   alpha: float, beta: float) -> float:
@@ -252,8 +286,10 @@ class AlphaBetaEvalAgent(Agent):
             return value
 
 
-def evaluate_advanced(game: Game, state: State, player: int) -> float:
+def evaluate_advanced(game: Game, state: State, player: int,
+                      weights: Optional[dict[str, float]] = None) -> float:
     """추천 평가 함수 (player 관점). 기본 evaluate()에 세 가지 항을 더했다.
+    (아래 숫자는 기본 가중치 ADV_EVAL_WEIGHTS, weights=로 바꿀 수 있음)
 
     E = 0.30 * (폰 수 차이) / N
       + 0.20 * (전진도 합 차이) / (N * (N - 1))
@@ -267,6 +303,7 @@ def evaluate_advanced(game: Game, state: State, player: int) -> float:
     - 기동성: 둘 수 있는 수가 없으면 지므로(no_move="lose") 수가 많을수록 유리.
     - 가중치 합이 1이고 각 항이 -1 ~ 1 사이라 |E| < 1 → 실제 승패(±1)가 항상 우선한다.
     """
+    w = ADV_EVAL_WEIGHTS if weights is None else weights
     n = game.config.n
     board = state.board
     gen = RULES[game.config.rule]
@@ -304,23 +341,31 @@ def evaluate_advanced(game: Game, state: State, player: int) -> float:
     passed_diff = (passed[player] - passed[opp]) / n
     mob = (mobility[player] - mobility[opp]) / (mobility[player] + mobility[opp] + 1)
 
-    return (0.30 * material + 0.20 * advance + 0.25 * frontier
-            + 0.15 * passed_diff + 0.10 * mob)
+    return (w["material"] * material + w["advance"] * advance + w["frontier"] * frontier
+            + w["passed"] * passed_diff + w["mobility"] * mob)
 
 
 class AlphaBetaAdvancedAgent(AlphaBetaEvalAgent):
     """AlphaBetaEvalAgent와 탐색은 똑같고, 평가 함수만 evaluate_advanced()로 바꾼 것."""
 
+    default_weights = ADV_EVAL_WEIGHTS
+
     def __init__(self, depth: int = 4, name: str = "AlphaBetaAdvancedAI",
-                 seed: Optional[int] = None) -> None:
-        super().__init__(depth=depth, name=name, seed=seed)
+                 seed: Optional[int] = None,
+                 weights: Optional[dict[str, float]] = None) -> None:
+        super().__init__(depth=depth, name=name, seed=seed, weights=weights)
 
     def evaluate(self, game: Game, state: State, me: int) -> float:
-        return evaluate_advanced(game, state, me)
+        return evaluate_advanced(game, state, me, self.weights)
 
 
 class BfsAgent(Agent):
     """너비 우선 탐색(BFS)으로 '내가 이기는 가장 가까운 종료 국면'을 찾아 그 첫 수를 둔다.
+
+    ※ 적대적 탐색(adversarial search)이 아니다. 상대의 수도 '내 승리로 가는 경로'의
+      일부로 취급하므로(상대가 협조한다고 가정), 실제로는 상대가 막을 수 있는 승리도 찾는다.
+      Minimax 계열과 비교하기 위한 '비적대적 기준선(baseline)' 에이전트다.
+      깊이(max_depth=4)·노드 수(max_nodes) 제한과 중복 국면 제거(visited) 덕분에 계산량이 작다.
 
     - 큐에 (국면, 루트에서 둔 첫 수, 깊이)를 넣고 깊이 순서대로 펼친다.
     - 같은 국면(board + to_move)은 visited로 한 번만 펼친다.

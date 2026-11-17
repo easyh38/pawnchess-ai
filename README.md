@@ -1,8 +1,8 @@
 # PawnChess — 폰 체스 변형 게임 환경
 
 > 인공지능 입문 팀프로젝트
-> 이 저장소는 **게임 환경(Environment) + 터미널 인터페이스**까지만 구현되어 있습니다.
-> **탐색 알고리즘(미니맥스, 알파베타, 평가 함수)은 팀이 직접 구현**하며, 이 코드에는 포함되어 있지 않습니다.
+> 이 저장소에는 **게임 환경(Environment) + 터미널 인터페이스 + 탐색 에이전트(Minimax, 알파베타, 깊이 제한 + 평가 함수, BFS) + GUI**가 구현되어 있습니다.
+> 남은 작업은 **판 크기 확장 실험, 평가 함수 파라미터 조정, 성과 측정, 보고서 작성**입니다. (4장 로드맵 참고)
 
 - 언어/의존성: Python 3.10+ , 표준 라이브러리만 사용 (검증 환경: Python 3.14.3, Windows 11)
 
@@ -15,7 +15,8 @@ python -m pawnchess.cli                          # 4x4 pawn 규칙 (기본)
 python -m pawnchess.cli --n 5 --rule pawn        # 5x5
 python -m pawnchess.cli --rule cross             # 비교용 변형: 십자 이동
 python -m pawnchess.cli --play random            # 시작부터 RandomAgent와 대국
-python -m pawnchess.cli --play minimax           # 내가 만든 에이전트와 대국 (먼저 등록 필요: 3장 참고)
+python -m pawnchess.cli --play alphabeta_adv     # 탐색 에이전트와 대국 (등록된 이름: 3-4 참고)
+python -m pawnchess_gui                          # GUI (pawnchess_gui/README.md 참고)
 ```
 
 ### 시작 옵션
@@ -24,7 +25,7 @@ python -m pawnchess.cli --play minimax           # 내가 만든 에이전트와
 - `--no-move {lose,draw}`(기본 lose = 둘 수 없는 쪽이 패배, draw = 무승부) : 자기 차례에서 둘 수 있는 수가 없을 때의 처리 방식
 - `--max-plies <정수|auto|none>`(정수 = 그 수만큼 두면 무승부, auto = 규칙별 기본값(cross : 50, pawn : 제한 없음), none = 제한 없음) : 최대 진행수 제한
 - `--repetition-draw <정수|none>`(정수 = 그 수만큼 반복되면 무승부, none = 반복 무승부 판정을 끔) : 같은 국면 반복 시 무승부 처리
-- `--play <에이전트 이름>`(기본은 `random`뿐, 내 에이전트 추가 방법은 3장) : 시작부터 그 에이전트와 대국. 이름은 `pawnchess/agents.py`의 `AGENTS` 등록표에 있는 것만 가능
+- `--play <에이전트 이름>`(`random`, `minimax`, `alphabeta`, `alphabeta_eval`, `alphabeta_adv`, `bfs`, 새 에이전트 추가 방법은 3-2) : 시작부터 그 에이전트와 대국. 이름은 `pawnchess/agents.py`의 `AGENTS` 등록표에 있는 것만 가능
 
 화면 예시: 
 (N=4): 백 `W`, 흑 `B`, 빈칸 `.`. 위쪽이 N행이고 마지막 수는 `[ ]`로 표시됩니다.
@@ -232,6 +233,47 @@ N_GAMES = 100                          # 설정마다 둘 판 수 (색깔 교대
 - 탐색 노드 수는 A와 B가 쓴 것을 합친 대국 전체 합계입니다. A의 탐색량을 보고 싶으면 B를 Random으로 두세요.
 - 에이전트를 `agents.py`에 두었다면 `from pawnchess.agents import MinimaxAgent` 후 `lambda: MinimaxAgent()`처럼 쓰면 됩니다.
 - 출력 수치를 PPT/엑셀로 옮기는 방법(CSV 저장, 그래프 등)은 아직 정하지 않았습니다. (TODO)
+- 깊이·평가 함수 가중치를 바꾸는 방법은 3-5 참고.
+
+### 3-4. 구현된 에이전트 (`pawnchess/agents.py`)
+
+| 등록 이름 | 클래스 | 탐색 방식 | 비고 |
+|---|---|---|---|
+| `random` | `RandomAgent` | 합법 수 중 무작위 | 기준선 |
+| `minimax` | `MinimaxAgent` | 순수 Minimax, 종료 국면까지 전수 탐색 | N=4까지 현실적, N≥5는 매우 느림 |
+| `alphabeta` | `AlphaBetaAgent` | Minimax + 알파베타 가지치기, 전수 탐색 | Minimax와 같은 값, 노드 수 감소 (`test_agents.py`로 교차 검증) |
+| `alphabeta_eval` | `AlphaBetaEvalAgent` | 알파베타 + 깊이 제한(기본 4) + `evaluate` | 평가 함수: 폰 수 차이, 전진도 차이 |
+| `alphabeta_adv` | `AlphaBetaAdvancedAgent` | 위와 같은 탐색 + `evaluate_advanced` | 평가 함수: 폰 수, 전진도, 최대 전진도, 통과 폰, 기동성 |
+| `bfs` | `BfsAgent` | 너비 우선 탐색(최대 깊이 4, 노드 20만 개 제한) | **적대적 탐색이 아님** (아래 참고) |
+
+- 모든 탐색 에이전트는 점수가 같은 최선 수가 여럿이면 그중 무작위로 고릅니다(`seed`로 재현 가능).
+- 깊이 제한 에이전트는 종료 국면 값에 `(1 + 0.01 × 남은 깊이)`를 곱해 **빨리 이기고 늦게 지는** 수를 고릅니다.
+- **`BfsAgent`에 대해:** BFS는 원래 1인 탐색 알고리즘이라 상대의 최선 응수를 고려하지 않습니다. 상대의 수도 "내 승리로 가는 경로"의 일부로 보고(상대가 협조한다고 가정), 가장 얕은 승리 국면으로 가는 첫 수를 둡니다. 대신 (1) 즉시 이기는 수는 바로 두고 (2) 상대에게 즉시 승리를 내주는 수는 빼서 최소한의 방어만 합니다. 분기가 많아 보이지만 pawn 규칙은 한 국면의 합법 수가 많아야 3N개 정도이고, 깊이 4 제한 + 중복 국면 제거(`visited`) + 노드 수 제한 덕분에 한 수당 계산량이 작습니다. 즉 **"계산은 가능하지만 적대적 상황에서는 최적이 아닌" 비교 기준선**이며, Minimax 계열이 왜 필요한지 보여 주는 대조군으로 씁니다.
+
+### 3-5. 깊이·평가 함수 파라미터 조정
+
+깊이 제한 에이전트는 `depth`와 `weights`를 인자로 받습니다. `weights`에는 바꾸고 싶은 항만 넣으면 되고, 빠진 항은 기본값을 씁니다.
+
+```python
+from pawnchess.agents import AlphaBetaEvalAgent, AlphaBetaAdvancedAgent
+
+AlphaBetaEvalAgent(depth=3, weights={"material": 0.7, "advance": 0.2})
+AlphaBetaAdvancedAgent(depth=4, weights={"frontier": 0.35, "mobility": 0.0})
+```
+
+| 평가 함수 | 항 이름 | 의미 | 기본 가중치 |
+|---|---|---|---|
+| `evaluate` (`EVAL_WEIGHTS`) | `material` | 폰 수 차이 / N | 0.45 |
+| | `advance` | 전진도 합 차이 / N(N−1) | 0.45 |
+| `evaluate_advanced` (`ADV_EVAL_WEIGHTS`) | `material` | 폰 수 차이 / N | 0.30 |
+| | `advance` | 전진도 합 차이 / N(N−1) | 0.20 |
+| | `frontier` | 가장 앞선 폰의 전진도 차이 / (N−1) | 0.25 |
+| | `passed` | 통과 폰(앞길에 막거나 잡을 상대 폰이 없는 폰) 수 차이 / N | 0.15 |
+| | `mobility` | 합법 수 개수 차이 / (전체 합법 수 + 1) | 0.10 |
+
+- 각 항은 −1~1로 정규화되어 있고, **가중치 절댓값 합이 1을 넘으면 `ValueError`**가 납니다. 평가값이 실제 승패(±1)보다 커지면 "이기는 수"보다 "평가가 좋은 수"를 고르게 되기 때문입니다.
+- 없는 항 이름(오타 포함)을 넣어도 `ValueError`가 납니다.
+- 실험은 `experiment.py`의 `AGENT_A`/`AGENT_B`에 위 식을 넣어 돌리면 됩니다.
 
 ---
 
@@ -246,17 +288,21 @@ N_GAMES = 100                          # 설정마다 둘 판 수 (색깔 교대
 | 6 | `cross` 규칙(이동 4방향) + 수 제한/무승부 | 완료 |
 | 7 | 방향키 모드 (`keys`, `cross` 대각선 잡기 입력 `y u b n` 포함) | 완료 |
 | 8 | 에이전트 CLI 연결(`AGENTS` 등록표, `--play <이름>`) + 성과 측정 스크립트 틀(`experiment.py`) | 완료 |
-| **9** | **팀 작업: MinimaxAgent → AlphaBetaAgent → 깊이 제한+평가 함수 → (선택) 반복 심화·수 순서** | **다음 할 일** |
+| 9 | 탐색 에이전트: `MinimaxAgent` → `AlphaBetaAgent` → 깊이 제한 + 평가 함수(`AlphaBetaEvalAgent`, `AlphaBetaAdvancedAgent`) + 비교용 `BfsAgent`, 동점 수 무작위 선택 | 완료 |
+| 10 | GUI (`pawnchess_gui`, tkinter) | 완료 |
+| 11 | 평가 함수 가중치·깊이를 인자로 조정 가능하게 변경 (3-5) + 에이전트 테스트(`test_agents.py`: Minimax-AlphaBeta 교차 검증) | 완료 |
+| **12** | **판 크기 확장 실험(N=5, 6, …) + 평가 함수 파라미터 조정 + 성과 측정** | **진행 예정** |
+| **13** | **보고서 작성** | **진행 예정** |
+| — | 기물 종류 추가 (나이트 등) | **제외** (시간 부족, 8-1) |
+| — | 반복 심화·수 순서(move ordering) | 선택 (시간이 남으면) |
 
 ### 앞으로 진행 사항
 
 1. **환경 확정값 합의** — 2-5장의 설정값(`no_move`, `max_plies`, `repetition_draw`)을 팀이 정한다. 바꾸면 7장 기준값도 다시 계산해야 한다.
-2. **MinimaxAgent** — `Agent` 인터페이스를 상속해 `agents.py`(또는 새 파일)에 추가하고 `AGENTS`에 등록. 위 3장 코드 예시 참고.
-3. **AlphaBetaAgent** — 같은 결과(값)를 내는지 Minimax와 교차 검증, 노드 수 감소량 측정.
-4. **깊이 제한 + 평가 함수** — N=5 이상, `cross` 규칙처럼 전수 탐색이 불가능한 설정에서 사용.
-5. **성과 측정** — `experiment.py`(3-3)로 `run_matches`를 돌려 Random 대비 승률, 수당 시간, `CountingGame`으로 탐색 노드 수 비교.
-   (PEAS의 성과 측도 P에 해당, 백/흑 색깔별로 나눠서 해석할 것 — `cross`는 N=3 흑 필승, N=4 백 필승, 7장 참고)
-6. **발표 자료** — 확장 축 ①(N↑ → 깊이 m↑), ②(규칙 변경 → 분기 계수 b↑)에 따른 노드 수/시간 변화를 표,그래프로 정리.
+2. **판 크기 확장 실험 (확장 축 ①)** — N=4 → 5 → 6 …으로 늘리며 `experiment.py`로 승률, 수당 시간, 탐색 노드 수를 잰다. 전수 탐색(`minimax`, `alphabeta`)은 N=4까지, 그 이상은 깊이 제한 에이전트로 비교한다.
+3. **평가 함수 파라미터 조정** — 3-5의 `weights`, `depth`를 바꿔 가며 같은 상대(예: 기본 가중치 에이전트, Random)와 붙여 승률 변화를 본다. 한 번에 한 항만 바꾸면 해석이 쉽다.
+4. **성과 측정 해석** — 백/흑 색깔별로 나눠서 해석한다 (`pawn` N=4 백 필승, `cross`는 N=3 흑 필승·N=4 백 필승, 7장 참고). 판 수는 설정마다 같게(예: 100판) 맞춘다.
+5. **보고서/발표 자료** — 확장 축 ①(N↑ → 깊이 m↑), ②(규칙 변경 → 분기 계수 b↑)에 따른 노드 수/시간 변화와 파라미터 조정 결과를 표·그래프로 정리한다.
 
 ---
 
@@ -266,6 +312,7 @@ N_GAMES = 100                          # 설정마다 둘 판 수 (색깔 교대
 AI PROJECT/
 ├─ README.md                   # 이 문서
 ├─ experiment.py               # 에이전트 성과 측정 스크립트 틀 (3-3)
+├─ pawnchess_gui/              # tkinter GUI (pawnchess_gui/README.md)
 └─ pawnchess/
    ├─ __init__.py
    ├─ game.py
@@ -278,7 +325,8 @@ AI PROJECT/
       ├─ test_rules_pawn.py
       ├─ test_rules_cross.py
       ├─ test_reference_values.py
-      └─ test_runner_cli.py
+      ├─ test_runner_cli.py
+      └─ test_agents.py
 ```
 
 ### 소스 파일
@@ -288,7 +336,7 @@ AI PROJECT/
 | `__init__.py` | 편의용 import 모음 (re-export) | `Game, Config, State, Action, WHITE, BLACK, Agent, RandomAgent, HumanAgent, play_game, run_matches, CountingGame, GameRecord, MatchStats`를 한 번에 import 가능하게 함 |
 | `game.py` | 게임 환경의 규칙과 상태 정의 | `Config`(n=4 기본, rule, no_move, max_plies, repetition_draw — 설정 검증 포함), `Action(frm, to, capture)`, `State(board, to_move, ply, winner, history)`, `Game`(핵심 6함수), 규칙 생성기 `_pawn_moves` / `_cross_moves`와 `RULES` 레지스트리, 종료 판정 `_winner_after`(도달·전멸·수 없음·ply 제한·반복), 불법 수 이유 `illegal_reason` |
 | `notation.py` | 사람이 읽는 표기 ↔ 내부 객체 변환 | `"a1a2"` ↔ `Action`(`parse_move`/`format_move`), 칸 표기, 방향어(`up`, `upleft`…) → `Action`(`direction_to_action`), 판 출력 `render_board`(마지막 수 `[ ]`, 커서 표시 지원), 테스트용 텍스트 → `State`(`state_from_text`) |
-| `agents.py` | 에이전트 인터페이스와 기본 구현 | `Agent`(추상 `choose_action`), `RandomAgent`(seed 지정 가능), `HumanAgent`(터미널 입력: `a1a2` / `a2 up` / 번호 / `?`), **`AGENTS` 등록표**(CLI에서 이름으로 에이전트를 만드는 표, 기본은 `random`뿐), **탐색 에이전트는 여기에 팀이 추가하고 `AGENTS`에 등록** |
+| `agents.py` | 에이전트 인터페이스와 구현 | `Agent`(추상 `choose_action`), `RandomAgent`, `HumanAgent`, 탐색 에이전트(`MinimaxAgent`, `AlphaBetaAgent`, `AlphaBetaEvalAgent`, `AlphaBetaAdvancedAgent`, `BfsAgent`), 평가 함수 `evaluate`/`evaluate_advanced`와 기본 가중치 `EVAL_WEIGHTS`/`ADV_EVAL_WEIGHTS`, **`AGENTS` 등록표**(CLI·GUI에서 이름으로 에이전트를 만드는 표) (3-4, 3-5) |
 | `runner.py` | 대국 실행·통계·계측 | `play_game`(수순·수당 시간·결과 기록 → `GameRecord`), `run_matches`(N판, 색깔 교대, 승/패/무와 색깔별 집계 → `MatchStats`), `CountingGame`(`actions`/`result` 호출 횟수 계측 래퍼) |
 | `cli.py` | 터미널 인터페이스 | `Session`(상태·undo 이력·상대 에이전트 관리, `cmd_*` 명령 핸들러), 명령어 모드, `keys_mode`(방향키 모드), `main`(argparse 진입점) |
 | `keys.py` | OS별 키 입력 흡수 | `read_key()` 하나로 Windows(`msvcrt.getwch`)와 macOS/Linux(`termios`+`tty`)의 방향키 차이를 통일. `'up' 'down' 'left' 'right' 'enter' 'esc'` 또는 문자 반환 |
@@ -302,6 +350,8 @@ AI PROJECT/
 | `tests/test_rules_cross.py` | `cross` 규칙: 시작 수 개수, 4방향 이동 + 대각선 앞 잡기(백/흑), 상하좌우·뒤 잡기 불가, 자기 기물 칸 진입 불가, `max_plies` 무승부, 기본 ply 제한, 반복 국면 무승부 | 8개 / 수 초 이내 |
 | `tests/test_reference_values.py` | **7장 기준값**: `pawn` N=4 (11,712 / 4,197,973 / 백 필승), `cross` N=4 (21반수 이상이면 백 필승) | 4개 / **약 2.5분** (N=4 전체 트리 탐색) |
 | `tests/test_runner_cli.py` | `play_game` 재현성(seed), `run_matches` 집계 합, 커스텀 에이전트 장착, `CountingGame`, CLI 세션(불법 수 무시, `peek`/`undo`/`set`), 대 Random 대국, **`AGENTS`에 등록한 에이전트와 `play`** | 7개 / 수 초 이내 |
+| `tests/test_agents.py` | **Minimax와 AlphaBeta가 같은 값을 내고 AlphaBeta 노드 수가 더 적음**(N=3), N=3 흑 필승 재현, 평가 함수 기본 가중치 = 원래 식, 가중치 일부 변경·잘못된 가중치 거부, 평가 함수 제로섬, 깊이 제한 에이전트·BFS의 대 Random 승률 | 7개 / 1초 이내 |
+| `pawnchess_gui/tests/test_controller.py` | GUI 대국 진행 로직(`Match`) | 수 초 이내 |
 
 > `tests/__init__.py`, `__pycache__/`는 패키지 인식·파이썬 캐시용 파일로 직접 수정할 필요 없음.
 
@@ -316,7 +366,7 @@ AI PROJECT/
 python -m unittest discover -s pawnchess/tests -t . -v
 
 # 빠른 테스트만 (기준값 제외, 수 초)
-python -m unittest pawnchess.tests.test_rules_pawn pawnchess.tests.test_rules_cross pawnchess.tests.test_runner_cli -v
+python -m unittest pawnchess.tests.test_rules_pawn pawnchess.tests.test_rules_cross pawnchess.tests.test_runner_cli pawnchess.tests.test_agents -v
 
 # 기준값 테스트만
 python -m unittest pawnchess.tests.test_reference_values -v
@@ -344,7 +394,7 @@ python -m unittest pawnchess.tests.test_rules_pawn.PawnRules.test_result_does_no
 | `result()`가 입력 상태를 바꾸지 않음 | `test_result_does_not_mutate` |
 | `utility` 제로섬 | `test_utility_zero_sum_and_guard` |
 | `Agent`만 구현하면 CLI·`run_matches`에 장착 | `test_custom_agent_plugs_in`, `test_cli_registered_agent` |
-| 탐색 알고리즘 코드 미포함 | `agents.py`에 `RandomAgent`/`HumanAgent`만 존재 (코드 검색으로 확인) |
+| Minimax와 AlphaBeta가 같은 값 + 노드 수 감소 | `python -m unittest pawnchess.tests.test_agents -v` |
 
 ### 6-3. 시연 시나리오 (발표/데모용 추천 순서)
 
@@ -443,8 +493,8 @@ python experiment.py
 ## 8. 기타
 
 ### 8-1. 후순위 확장 (지금은 구현하지 않음, 구조만 열어 둠)
-- 기물 종류 추가 (예: 나이트). 보드 칸 값을 `int` 대신 `(색, 종류)`로 바꿀 수 있게 이동 생성 함수를 기물별로 분리해 둠. 다른 기물이 생기면 반복 국면이 가능하므로 2-5장의 수 제한·무승부 규칙을 사용.
-- GUI (터미널 버전 완성 후).
+- 기물 종류 추가 (예: 나이트) — **이번 프로젝트에서는 시간 부족으로 하지 않기로 함.** 확장 축 ②는 `cross` 규칙(이동 방식 변경)으로 다룬다. 나중에 한다면 이동 생성 함수가 기물별로 분리되어 있어 보드 칸 값을 `(색, 종류)`로 바꾸면 되고, 반복 국면이 생기므로 2-5장의 수 제한·무승부 규칙을 사용.
+- ~~GUI~~ → 구현 완료 (`pawnchess_gui`).
 - Gymnasium 스타일 래퍼(`reset()`, `step(action)`) — 필요 시.
 
 ### 8-2. 환경 요약 (발표용)
@@ -456,3 +506,4 @@ python experiment.py
 | 환경 성질 | fully observable, deterministic, sequential, static, discrete, known, multi-agent |
 | 기준값 | N=4 → 선수 필승 (11,712 국면 / 4,197,973 노드) |
 | 적합 알고리즘 | Minimax → Alpha-Beta → 깊이 제한 + 평가 함수 → (선택) 반복 심화·수 순서 |
+| 구현 에이전트 | random, minimax, alphabeta, alphabeta_eval, alphabeta_adv, bfs(비적대적 기준선) |

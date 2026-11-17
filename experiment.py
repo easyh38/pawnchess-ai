@@ -24,6 +24,14 @@ from pawnchess.agents import BfsAgent, MinimaxAgent, AlphaBetaEvalAgent, AlphaBe
 AGENT_A = lambda: AlphaBetaEvalAgent()       # 평가할 에이전트 예) lambda: MinimaxAgent()  /  AGENTS["minimax"]
 AGENT_B = lambda: AlphaBetaAdvancedAgent()     # 상대 에이전트     예) lambda: RandomAgent(1)
 
+# [파라미터 조정 실험] 깊이(depth)와 평가 함수 가중치(weights)를 바꿔서 넣을 수 있다. (README 3-5)
+#   - 빠진 가중치는 기본값을 쓴다. 가중치 절댓값의 합은 1 이하여야 한다 (넘으면 오류).
+#   - evaluate 항목:          material, advance                        (기본 0.45 / 0.45)
+#   - evaluate_advanced 항목: material, advance, frontier, passed, mobility (기본 0.30/0.20/0.25/0.15/0.10)
+# 예)
+# AGENT_A = lambda: AlphaBetaEvalAgent(depth=3, weights={"material": 0.7, "advance": 0.2})
+# AGENT_A = lambda: AlphaBetaAdvancedAgent(depth=4, weights={"frontier": 0.35, "mobility": 0.0})
+
 # 실험할 환경 목록. 여러 개 적으면 차례로 모두 돌린다. (확장 축 ① N↑, ② 규칙 변경)
 CONFIGS = [
     Config(n=6, rule="pawn"),
