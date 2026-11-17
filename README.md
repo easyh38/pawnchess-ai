@@ -25,7 +25,7 @@ python -m pawnchess_gui                          # GUI (pawnchess_gui/README.md 
 - `--no-move {lose,draw}`(기본 lose = 둘 수 없는 쪽이 패배, draw = 무승부) : 자기 차례에서 둘 수 있는 수가 없을 때의 처리 방식
 - `--max-plies <정수|auto|none>`(정수 = 그 수만큼 두면 무승부, auto = 규칙별 기본값(cross : 50, pawn : 제한 없음), none = 제한 없음) : 최대 진행수 제한
 - `--repetition-draw <정수|none>`(정수 = 그 수만큼 반복되면 무승부, none = 반복 무승부 판정을 끔) : 같은 국면 반복 시 무승부 처리
-- `--play <에이전트 이름>`(`random`, `minimax`, `alphabeta`, `alphabeta_eval`, `alphabeta_adv`, `bfs`, 새 에이전트 추가 방법은 3-2) : 시작부터 그 에이전트와 대국. 이름은 `pawnchess/agents.py`의 `AGENTS` 등록표에 있는 것만 가능
+- `--play <에이전트 이름>`(`random`, `minimax`, `alphabeta`, `alphabeta_eval`, `alphabeta_adv`, `bfs`, 수 순서를 켠 `alphabeta_ord`, `alphabeta_eval_ord`, `alphabeta_adv_ord`, 새 에이전트 추가 방법은 3-2) : 시작부터 그 에이전트와 대국. 이름은 `pawnchess/agents.py`의 `AGENTS` 등록표에 있는 것만 가능
 
 화면 예시: 
 (N=4): 백 `W`, 흑 `B`, 빈칸 `.`. 위쪽이 N행이고 마지막 수는 `[ ]`로 표시됩니다.
@@ -245,6 +245,7 @@ N_GAMES = 100                          # 설정마다 둘 판 수 (색깔 교대
 | `alphabeta_eval` | `AlphaBetaEvalAgent` | 알파베타 + 깊이 제한(기본 4) + `evaluate` | 평가 함수: 폰 수 차이, 전진도 차이 |
 | `alphabeta_adv` | `AlphaBetaAdvancedAgent` | 위와 같은 탐색 + `evaluate_advanced` | 평가 함수: 폰 수, 전진도, 최대 전진도, 통과 폰, 기동성 |
 | `bfs` | `BfsAgent` | 너비 우선 탐색(최대 깊이 4, 노드 20만 개 제한) | **적대적 탐색이 아님** (아래 참고) |
+| `alphabeta_ord` / `alphabeta_eval_ord` / `alphabeta_adv_ord` | 위 세 알파베타 클래스 + `ordering=True` | 같은 탐색 + 수 순서 (3-6) | 값은 같고 노드 수만 감소 |
 
 - 모든 탐색 에이전트는 점수가 같은 최선 수가 여럿이면 그중 무작위로 고릅니다(`seed`로 재현 가능).
 - 깊이 제한 에이전트는 종료 국면 값에 `(1 + 0.01 × 남은 깊이)`를 곱해 **빨리 이기고 늦게 지는** 수를 고릅니다.
@@ -275,6 +276,33 @@ AlphaBetaAdvancedAgent(depth=4, weights={"frontier": 0.35, "mobility": 0.0})
 - 없는 항 이름(오타 포함)을 넣어도 `ValueError`가 납니다.
 - 실험은 `experiment.py`의 `AGENT_A`/`AGENT_B`에 위 식을 넣어 돌리면 됩니다.
 
+### 3-6. 수 순서 (move ordering)
+
+알파베타 세 클래스(`AlphaBetaAgent`, `AlphaBetaEvalAgent`, `AlphaBetaAdvancedAgent`)는 `ordering=True`를 주면 **좋을 것 같은 수부터 탐색**합니다. 기본값은 `False`라서 옵션을 주지 않으면 기존과 똑같이 동작합니다.
+
+```python
+AlphaBetaAgent(ordering=True)
+AlphaBetaAdvancedAgent(depth=4, weights={"frontier": 0.35}, ordering=True)   # 다른 옵션과 함께 사용 가능
+```
+
+- 순서 기준 (`order_actions`): (1) 상대 끝 줄에 도달하는 수 → (2) 잡는 수 → (3) 더 앞으로 나가는 수. `Action`만 보고 정렬하므로 정렬 자체는 노드 수에 잡히지 않습니다.
+- **탐색 결과 값은 순서와 무관하게 같고, 가지치기가 일찍 일어나 노드 수만 줄어듭니다.** `test_agents.py`의 `TestMoveOrdering`이 이를 확인합니다.
+- 루트에서는 수를 섞은 뒤 안정 정렬하므로, 우선순위가 같은 수끼리는 여전히 무작위로 고릅니다.
+- CLI·GUI에서는 `alphabeta_ord`, `alphabeta_eval_ord`, `alphabeta_adv_ord` 이름으로 고르면 됩니다.
+
+측정 예시 (`result` 호출 수, 이 저장소에서 실제 실행한 값):
+
+| 조건 | 수 순서 없음 | 수 순서 있음 | 감소율 |
+|---|---|---|---|
+| N=4, `alphabeta` 전수 탐색, 시작 국면 | 34,180 | 4,165 | 87.8% |
+| N=4, `alphabeta_adv` 깊이 4, 대국 중 국면 60개 합 | 6,958 | 4,693 | 32.6% |
+| N=5, `alphabeta_adv` 깊이 5, 대국 중 국면 60개 합 | 53,724 | 27,928 | 48.0% |
+| N=6, `alphabeta_eval` 깊이 4, 대국 중 국면 60개 합 | 19,160 | 14,669 | 23.4% |
+| N=6, `alphabeta_adv` 깊이 5, 대국 중 국면 60개 합 | 67,903 | 36,029 | 46.9% |
+
+- 깊이 제한 탐색의 **시작 국면**처럼 잡는 수가 없는 국면에서는 효과가 거의 없거나 오히려 늘 수도 있습니다(N=5 `alphabeta_eval` 깊이 4: 215 → 264). 효과는 여러 국면 또는 대국 전체 합으로 비교하세요.
+- 같은 깊이에서 수 순서를 켜고 끄며 `experiment.py`로 노드 수·수당 시간을 비교하면 됩니다. 승률은 거의 같아야 정상입니다(동점 수 선택만 달라질 수 있음).
+
 ---
 
 ## 4. 프로젝트 진행 방식 (로드맵)
@@ -291,18 +319,20 @@ AlphaBetaAdvancedAgent(depth=4, weights={"frontier": 0.35, "mobility": 0.0})
 | 9 | 탐색 에이전트: `MinimaxAgent` → `AlphaBetaAgent` → 깊이 제한 + 평가 함수(`AlphaBetaEvalAgent`, `AlphaBetaAdvancedAgent`) + 비교용 `BfsAgent`, 동점 수 무작위 선택 | 완료 |
 | 10 | GUI (`pawnchess_gui`, tkinter) | 완료 |
 | 11 | 평가 함수 가중치·깊이를 인자로 조정 가능하게 변경 (3-5) + 에이전트 테스트(`test_agents.py`: Minimax-AlphaBeta 교차 검증) | 완료 |
-| **12** | **판 크기 확장 실험(N=5, 6, …) + 평가 함수 파라미터 조정 + 성과 측정** | **진행 예정** |
-| **13** | **보고서 작성** | **진행 예정** |
+| 12 | 수 순서(move ordering) 옵션 `ordering=True` + 등록 이름 `*_ord` + 값 동일·노드 감소 테스트 (3-6) | 완료 |
+| **13** | **판 크기 확장 실험(N=5, 6, …) + 평가 함수 파라미터 조정 + 수 순서 효과 측정 + 성과 측정** | **진행 예정** |
+| **14** | **보고서 작성** | **진행 예정** |
 | — | 기물 종류 추가 (나이트 등) | **제외** (시간 부족, 8-1) |
-| — | 반복 심화·수 순서(move ordering) | 선택 (시간이 남으면) |
+| — | 반복 심화 (iterative deepening) | 선택 (시간 제한 규칙이 없어 우선순위 낮음) |
 
 ### 앞으로 진행 사항
 
 1. **환경 확정값 합의** — 2-5장의 설정값(`no_move`, `max_plies`, `repetition_draw`)을 팀이 정한다. 바꾸면 7장 기준값도 다시 계산해야 한다.
 2. **판 크기 확장 실험 (확장 축 ①)** — N=4 → 5 → 6 …으로 늘리며 `experiment.py`로 승률, 수당 시간, 탐색 노드 수를 잰다. 전수 탐색(`minimax`, `alphabeta`)은 N=4까지, 그 이상은 깊이 제한 에이전트로 비교한다.
 3. **평가 함수 파라미터 조정** — 3-5의 `weights`, `depth`를 바꿔 가며 같은 상대(예: 기본 가중치 에이전트, Random)와 붙여 승률 변화를 본다. 한 번에 한 항만 바꾸면 해석이 쉽다.
-4. **성과 측정 해석** — 백/흑 색깔별로 나눠서 해석한다 (`pawn` N=4 백 필승, `cross`는 N=3 흑 필승·N=4 백 필승, 7장 참고). 판 수는 설정마다 같게(예: 100판) 맞춘다.
-5. **보고서/발표 자료** — 확장 축 ①(N↑ → 깊이 m↑), ②(규칙 변경 → 분기 계수 b↑)에 따른 노드 수/시간 변화와 파라미터 조정 결과를 표·그래프로 정리한다.
+4. **수 순서 효과 측정** — 3-6처럼 같은 에이전트·같은 깊이에서 `ordering`만 켜고 끄며 노드 수와 수당 시간을 비교한다.
+5. **성과 측정 해석** — 백/흑 색깔별로 나눠서 해석한다 (`pawn` N=4 백 필승, `cross`는 N=3 흑 필승·N=4 백 필승, 7장 참고). 판 수는 설정마다 같게(예: 100판) 맞춘다.
+6. **보고서/발표 자료** — 확장 축 ①(N↑ → 깊이 m↑), ②(규칙 변경 → 분기 계수 b↑)에 따른 노드 수/시간 변화, 파라미터 조정 결과, 수 순서 효과를 표·그래프로 정리한다.
 
 ---
 
@@ -350,7 +380,7 @@ AI PROJECT/
 | `tests/test_rules_cross.py` | `cross` 규칙: 시작 수 개수, 4방향 이동 + 대각선 앞 잡기(백/흑), 상하좌우·뒤 잡기 불가, 자기 기물 칸 진입 불가, `max_plies` 무승부, 기본 ply 제한, 반복 국면 무승부 | 8개 / 수 초 이내 |
 | `tests/test_reference_values.py` | **7장 기준값**: `pawn` N=4 (11,712 / 4,197,973 / 백 필승), `cross` N=4 (21반수 이상이면 백 필승) | 4개 / **약 2.5분** (N=4 전체 트리 탐색) |
 | `tests/test_runner_cli.py` | `play_game` 재현성(seed), `run_matches` 집계 합, 커스텀 에이전트 장착, `CountingGame`, CLI 세션(불법 수 무시, `peek`/`undo`/`set`), 대 Random 대국, **`AGENTS`에 등록한 에이전트와 `play`** | 7개 / 수 초 이내 |
-| `tests/test_agents.py` | **Minimax와 AlphaBeta가 같은 값을 내고 AlphaBeta 노드 수가 더 적음**(N=3), N=3 흑 필승 재현, 평가 함수 기본 가중치 = 원래 식, 가중치 일부 변경·잘못된 가중치 거부, 평가 함수 제로섬, 깊이 제한 에이전트·BFS의 대 Random 승률 | 7개 / 1초 이내 |
+| `tests/test_agents.py` | **Minimax와 AlphaBeta가 같은 값을 내고 AlphaBeta 노드 수가 더 적음**(N=3), N=3 흑 필승 재현, 평가 함수 기본 가중치 = 원래 식, 가중치 일부 변경·잘못된 가중치 거부, 평가 함수 제로섬, **수 순서: 정렬 기준, 켜고 꺼도 값이 같고 노드 수 감소(N=4 전수, N=5 깊이 제한)**, 등록 이름, 깊이 제한 에이전트·BFS의 대 Random 승률 | 11개 / 약 2초 |
 | `pawnchess_gui/tests/test_controller.py` | GUI 대국 진행 로직(`Match`) | 수 초 이내 |
 
 > `tests/__init__.py`, `__pycache__/`는 패키지 인식·파이썬 캐시용 파일로 직접 수정할 필요 없음.
@@ -394,7 +424,7 @@ python -m unittest pawnchess.tests.test_rules_pawn.PawnRules.test_result_does_no
 | `result()`가 입력 상태를 바꾸지 않음 | `test_result_does_not_mutate` |
 | `utility` 제로섬 | `test_utility_zero_sum_and_guard` |
 | `Agent`만 구현하면 CLI·`run_matches`에 장착 | `test_custom_agent_plugs_in`, `test_cli_registered_agent` |
-| Minimax와 AlphaBeta가 같은 값 + 노드 수 감소 | `python -m unittest pawnchess.tests.test_agents -v` |
+| Minimax와 AlphaBeta가 같은 값 + 노드 수 감소, 수 순서를 켜도 같은 값 + 노드 수 감소 | `python -m unittest pawnchess.tests.test_agents -v` |
 
 ### 6-3. 시연 시나리오 (발표/데모용 추천 순서)
 
@@ -505,5 +535,5 @@ python experiment.py
 | PEAS | P: 승률·수당 시간·탐색 노드 수 / E: N×N 판 + 상대 / A: 합법 수 선택 / S: 전체 판 상태 |
 | 환경 성질 | fully observable, deterministic, sequential, static, discrete, known, multi-agent |
 | 기준값 | N=4 → 선수 필승 (11,712 국면 / 4,197,973 노드) |
-| 적합 알고리즘 | Minimax → Alpha-Beta → 깊이 제한 + 평가 함수 → (선택) 반복 심화·수 순서 |
-| 구현 에이전트 | random, minimax, alphabeta, alphabeta_eval, alphabeta_adv, bfs(비적대적 기준선) |
+| 적합 알고리즘 | Minimax → Alpha-Beta → 깊이 제한 + 평가 함수 → 수 순서 → (선택) 반복 심화 |
+| 구현 에이전트 | random, minimax, alphabeta, alphabeta_eval, alphabeta_adv, bfs(비적대적 기준선), 수 순서 버전 `*_ord` |

@@ -24,6 +24,25 @@ def _shuffled_actions(game: Game, state: State, rng: random.Random) -> list[Acti
     return acts
 
 
+def order_actions(game: Game, state: State, acts: list[Action]) -> list[Action]:
+    """수 순서(move ordering): 좋을 것 같은 수를 앞으로 보낸다 (알파베타 가지치기를 빠르게 하는 용도).
+
+    우선순위: (1) 상대 끝 줄에 도달하는 수(즉시 승리) → (2) 잡는 수 → (3) 더 앞으로 나가는 수.
+    - Action만 보고 정렬하므로 game.result()를 부르지 않는다 → 정렬 자체는 노드 수에 잡히지 않는다.
+    - sorted는 안정 정렬이라 우선순위가 같은 수끼리는 원래 순서(루트에서는 섞인 순서)가 유지된다.
+    - 탐색 결과 값은 순서와 무관하게 같고, 가지치기가 일찍 일어나 노드 수만 줄어든다.
+    """
+    n = game.config.n
+    white = state.to_move == WHITE
+    goal = n - 1 if white else 0
+
+    def key(a: Action) -> tuple[bool, bool, int]:
+        row = a.to[0]
+        return (row == goal, a.capture, row if white else n - 1 - row)
+
+    return sorted(acts, key=key, reverse=True)
+
+
 class Agent:
     def choose_action(self, game: Game, state: State) -> Action:
         raise NotImplementedError
@@ -115,14 +134,22 @@ class AlphaBetaAgent(Agent):
     - alpha >= beta가 되면 그 아래 수는 더 볼 필요가 없다 (가지치기)
     """
 
-    def __init__(self, name: str = "AlphaBetaAI", seed: Optional[int] = None) -> None:
+    def __init__(self, name: str = "AlphaBetaAI", seed: Optional[int] = None,
+                 ordering: bool = False) -> None:
         self.name = name
         self.rng = random.Random(seed)   # 동점인 최선 수 중 무작위 선택용
+        self.ordering = ordering         # True면 수 순서(order_actions) 적용
+
+    def _actions(self, game: Game, state: State) -> list[Action]:
+        acts = game.actions(state)
+        return order_actions(game, state, acts) if self.ordering else acts
 
     def choose_action(self, game: Game, state: State) -> Action:
         acts = _shuffled_actions(game, state, self.rng)
         if not acts:
             raise ValueError("가능한 행동이 없습니다.")
+        if self.ordering:
+            acts = order_actions(game, state, acts)
         me = game.to_move(state)
         alpha, beta = -float("inf"), float("inf")
         best_score = -float("inf")
@@ -142,7 +169,7 @@ class AlphaBetaAgent(Agent):
 
         if game.to_move(state) == me:          # max 노드
             value = -float("inf")
-            for a in game.actions(state):
+            for a in self._actions(game, state):
                 value = max(value, self.alphabeta(game, game.result(state, a), me, alpha, beta))
                 alpha = max(alpha, value)
                 if alpha >= beta:
@@ -150,7 +177,7 @@ class AlphaBetaAgent(Agent):
             return value
         else:                                  # min 노드
             value = float("inf")
-            for a in game.actions(state):
+            for a in self._actions(game, state):
                 value = min(value, self.alphabeta(game, game.result(state, a), me, alpha, beta))
                 beta = min(beta, value)
                 if alpha >= beta:
@@ -229,18 +256,26 @@ class AlphaBetaEvalAgent(Agent):
 
     def __init__(self, depth: int = 4, name: str = "AlphaBetaEvalAI",
                  seed: Optional[int] = None,
-                 weights: Optional[dict[str, float]] = None) -> None:
+                 weights: Optional[dict[str, float]] = None,
+                 ordering: bool = False) -> None:
         if depth < 1:
             raise ValueError("depth는 1 이상이어야 합니다")
         self.depth = depth
         self.weights = _merge_weights(self.default_weights, weights)
         self.name = name
         self.rng = random.Random(seed)   # 동점인 최선 수 중 무작위 선택용
+        self.ordering = ordering         # True면 수 순서(order_actions) 적용
+
+    def _actions(self, game: Game, state: State) -> list[Action]:
+        acts = game.actions(state)
+        return order_actions(game, state, acts) if self.ordering else acts
 
     def choose_action(self, game: Game, state: State) -> Action:
         acts = _shuffled_actions(game, state, self.rng)
         if not acts:
             raise ValueError("가능한 행동이 없습니다.")
+        if self.ordering:
+            acts = order_actions(game, state, acts)
         me = game.to_move(state)
         alpha, beta = -float("inf"), float("inf")
         best_score = -float("inf")
@@ -268,7 +303,7 @@ class AlphaBetaEvalAgent(Agent):
 
         if game.to_move(state) == me:          # max 노드
             value = -float("inf")
-            for a in game.actions(state):
+            for a in self._actions(game, state):
                 value = max(value, self.alphabeta(game, game.result(state, a), depth - 1,
                                                   me, alpha, beta))
                 alpha = max(alpha, value)
@@ -277,7 +312,7 @@ class AlphaBetaEvalAgent(Agent):
             return value
         else:                                  # min 노드
             value = float("inf")
-            for a in game.actions(state):
+            for a in self._actions(game, state):
                 value = min(value, self.alphabeta(game, game.result(state, a), depth - 1,
                                                   me, alpha, beta))
                 beta = min(beta, value)
@@ -352,8 +387,10 @@ class AlphaBetaAdvancedAgent(AlphaBetaEvalAgent):
 
     def __init__(self, depth: int = 4, name: str = "AlphaBetaAdvancedAI",
                  seed: Optional[int] = None,
-                 weights: Optional[dict[str, float]] = None) -> None:
-        super().__init__(depth=depth, name=name, seed=seed, weights=weights)
+                 weights: Optional[dict[str, float]] = None,
+                 ordering: bool = False) -> None:
+        super().__init__(depth=depth, name=name, seed=seed, weights=weights,
+                         ordering=ordering)
 
     def evaluate(self, game: Game, state: State, me: int) -> float:
         return evaluate_advanced(game, state, me, self.weights)
@@ -446,5 +483,8 @@ AGENTS: dict[str, Callable[[], Agent]] = {
     "alphabeta": AlphaBetaAgent,           # Minimax + 알파베타 (끝까지 탐색)
     "alphabeta_eval": AlphaBetaEvalAgent,  # Minimax + 알파베타 + 평가 함수 (기본 깊이 4)
     "alphabeta_adv": AlphaBetaAdvancedAgent,  # 위와 같고 추천 평가 함수 사용 (기본 깊이 4)
+    "alphabeta_ord": lambda: AlphaBetaAgent(ordering=True),               # alphabeta + 수 순서
+    "alphabeta_eval_ord": lambda: AlphaBetaEvalAgent(ordering=True),      # alphabeta_eval + 수 순서
+    "alphabeta_adv_ord": lambda: AlphaBetaAdvancedAgent(ordering=True),   # alphabeta_adv + 수 순서
     "bfs": BfsAgent,           # 기본 최대 깊이 4
 }

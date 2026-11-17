@@ -31,6 +31,9 @@ AGENT_B = lambda: AlphaBetaAdvancedAgent()     # 상대 에이전트     예) la
 # 예)
 # AGENT_A = lambda: AlphaBetaEvalAgent(depth=3, weights={"material": 0.7, "advance": 0.2})
 # AGENT_A = lambda: AlphaBetaAdvancedAgent(depth=4, weights={"frontier": 0.35, "mobility": 0.0})
+#
+# [수 순서 실험] ordering=True면 좋을 것 같은 수부터 탐색한다 (값은 같고 노드 수만 줄어듦, README 3-6).
+# AGENT_A = lambda: AlphaBetaAdvancedAgent(depth=4, ordering=True)
 
 # 실험할 환경 목록. 여러 개 적으면 차례로 모두 돌린다. (확장 축 ① N↑, ② 규칙 변경)
 CONFIGS = [

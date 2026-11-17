@@ -1,10 +1,11 @@
-"""탐색 에이전트 검증: Minimax-AlphaBeta 교차 검증, 평가 함수 가중치, 기본 동작."""
+"""탐색 에이전트 검증: Minimax-AlphaBeta 교차 검증, 평가 함수 가중치, 수 순서, 기본 동작."""
+import random
 import unittest
 
 from pawnchess import Config, CountingGame, Game, RandomAgent, run_matches
-from pawnchess.agents import (ADV_EVAL_WEIGHTS, EVAL_WEIGHTS, AlphaBetaAdvancedAgent,
+from pawnchess.agents import (ADV_EVAL_WEIGHTS, AGENTS, EVAL_WEIGHTS, AlphaBetaAdvancedAgent,
                               AlphaBetaAgent, AlphaBetaEvalAgent, BfsAgent,
-                              MinimaxAgent, evaluate, evaluate_advanced)
+                              MinimaxAgent, evaluate, evaluate_advanced, order_actions)
 
 INF = float("inf")
 
@@ -70,6 +71,65 @@ class TestEvalWeights(unittest.TestCase):
             AlphaBetaEvalAgent(weights={"material": 0.8, "advance": 0.5})   # 합 > 1
         with self.assertRaises(ValueError):
             AlphaBetaEvalAgent(weights={"passed": 0.1})                    # 기본 평가 함수에 없는 항
+
+
+class TestMoveOrdering(unittest.TestCase):
+    """수 순서(ordering=True)는 값은 그대로 두고 노드 수만 줄여야 한다."""
+
+    @staticmethod
+    def _positions(game, k, seed):
+        rng, out = random.Random(seed), []
+        while len(out) < k:
+            s = game.initial_state()
+            while not game.is_terminal(s):
+                out.append(s)
+                s = game.result(s, rng.choice(game.actions(s)))
+        return out[:k]
+
+    def test_order_actions_puts_wins_and_captures_first(self):
+        game = Game(Config(n=4))
+        for s in self._positions(game, 40, 0):
+            ordered = order_actions(game, s, game.actions(s))
+            self.assertCountEqual(ordered, game.actions(s))          # 수가 빠지거나 늘지 않음
+            caps = [a.capture for a in ordered]
+            goal = game.config.n - 1 if s.to_move == 1 else 0
+            wins = [a.to[0] == goal for a in ordered]
+            self.assertEqual(wins, sorted(wins, reverse=True))       # 도달 수가 맨 앞
+            non_win_caps = [c for c, w in zip(caps, wins) if not w]
+            self.assertEqual(non_win_caps, sorted(non_win_caps, reverse=True))  # 그다음 잡는 수
+
+    def test_full_search_same_values_fewer_nodes(self):
+        """N=4 전수 알파베타: 루트 모든 수의 값이 같고 노드 수가 줄어든다."""
+        game = Game(Config(n=4))
+        s0 = game.initial_state()
+        me = game.to_move(s0)
+        g_off, g_on = CountingGame(game), CountingGame(game)
+        off, on = AlphaBetaAgent(), AlphaBetaAgent(ordering=True)
+        for a in game.actions(s0):
+            child = game.result(s0, a)
+            self.assertEqual(off.alphabeta(g_off, child, me, -INF, INF),
+                             on.alphabeta(g_on, child, me, -INF, INF))
+        self.assertLess(g_on.result_calls, g_off.result_calls)
+
+    def test_depth_limited_same_values_fewer_nodes(self):
+        """N=5, 대국 중 국면 30개: 두 평가 함수 모두 값이 같고 노드 수 합이 줄어든다."""
+        game = Game(Config(n=5))
+        positions = self._positions(game, 30, 5)
+        for cls in (AlphaBetaEvalAgent, AlphaBetaAdvancedAgent):
+            g_off, g_on = CountingGame(game), CountingGame(game)
+            off, on = cls(depth=4), cls(depth=4, ordering=True)
+            for s in positions:
+                me = game.to_move(s)
+                for a in game.actions(s):
+                    child = game.result(s, a)
+                    self.assertEqual(off.alphabeta(g_off, child, 3, me, -INF, INF),
+                                     on.alphabeta(g_on, child, 3, me, -INF, INF))
+            self.assertLess(g_on.result_calls, g_off.result_calls, msg=cls.__name__)
+
+    def test_registered_names(self):
+        for name in ("alphabeta_ord", "alphabeta_eval_ord", "alphabeta_adv_ord"):
+            self.assertTrue(AGENTS[name]().ordering, msg=name)
+        self.assertFalse(AGENTS["alphabeta_adv"]().ordering)      # 기본값은 꺼져 있음
 
 
 class TestAgentsPlay(unittest.TestCase):
